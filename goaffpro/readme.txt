@@ -1,8 +1,9 @@
 === Goaffpro Affiliate Marketing ===
-Tags: goaffpro, affiliate, affiliate marketing, influencer, influencer marketing, direct selling, multi level marketing
+Tags: goaffpro, affiliate, affiliate marketing, influencer marketing, multi level marketing
 Requires at least: 4.6
-Tested up to: 6.5.5
+Tested up to: 6.9
 License: GPLv2 or later
+Stable tag: 2.7.10
 
 The complete affiliate marketing solution for your WordPress and WooCommerce website.
 

@@ -10,7 +10,7 @@ Plugin Name: Goaffpro Affiliate Marketing
 Plugin URI: https://goaffpro.com/#merchants
 Description: This plugin connects your goaffpro account to your store. Log in to your <a target="_blank" href="https://goaffpro.com">goaffpro account</a> to add this site to your profile
 Author: Goaffpro
-Version: 2.7.9
+Version: 2.7.10
 Author URI: https://goaffpro.com/
 */
 
