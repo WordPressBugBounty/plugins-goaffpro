@@ -1,7 +1,7 @@
 <?php
 /**
  * @package GoAffPro
- * @version 2.7.10
+ * @version 2.7.12
  * @copyright Goaffpro
  * @licence GPL-2.0
  */
@@ -10,12 +10,12 @@ Plugin Name: Goaffpro Affiliate Marketing
 Plugin URI: https://goaffpro.com/#merchants
 Description: This plugin connects your goaffpro account to your store. Log in to your <a target="_blank" href="https://goaffpro.com">goaffpro account</a> to add this site to your profile
 Author: Goaffpro
-Version: 2.7.11
+Version: 2.7.12
 Author URI: https://goaffpro.com/
 */
 
-$goaffpro_plugin_version = "2.7.10";
-$goaffpro_plugin_version_code = 34;
+$goaffpro_plugin_version = "2.7.11";
+$goaffpro_plugin_version_code = 35;
 
 $goaffpro_token_key = 'goaffpro_public_token';
 if(is_multisite()){
@@ -51,8 +51,6 @@ function get_goaffpro_public_token(){
 	}
 }
 
-
-
 /**
  * Add goaffpro client sdk to the website's footer
  */
@@ -69,11 +67,10 @@ function goaffpro_client_footer(){
 add_action('woocommerce_thankyou', 'goaffpro_checkout_footer', 10, 1);
 
 function goaffpro_checkout_footer($order_id){
-	wp_enqueue_script( 'goaffpro_order_callback' );
 	try{
     	// retrieve the order representation for order_id
 	    $order = goaffpro_get_transformed_order($order_id);
-	}catch(Exception $e){
+	}catch(\Throwable $e){
         $order = array('id'=>$order_id);
     }
 	// The script must be added to the footer to ensure that the order data is present before the call is made
@@ -87,8 +84,8 @@ function goaffpro_checkout_footer($order_id){
           'publicToken' => get_goaffpro_public_token(),
           'order_id'=>$order_id
         );
-        wp_remote_post("https://api.goaffpro.com/woocommerce/internal_hook", $attr);
-    }catch(Exception $e){
+        wp_remote_post("https://api.goaffpro.com/woocommerce/internal_hook", array('body' => $attr));
+    }catch(\Throwable $e){
 
     }
 }
@@ -102,14 +99,19 @@ add_action('woocommerce_checkout_update_order_meta',function( $order_id, $posted
     if(!isset($_COOKIE['ref'])) {
 		return;
 	}
+	$order = wc_get_order($order_id);
+	if(!$order){
+		return;
+	}
 	$referral_code = sanitize_text_field($_COOKIE['ref']);
 	if($referral_code){
-		update_post_meta($order_id, 'ref', $referral_code);
+		$order->update_meta_data('ref', $referral_code);
 	}
-	$visit_id = sanitize_text_field($_COOKIE['gfp_v_id']);
+	$visit_id = isset($_COOKIE['gfp_v_id']) ? sanitize_text_field($_COOKIE['gfp_v_id']) : '';
 	if($visit_id){
-	    update_post_meta($order_id,'gfp_v_id', $visit_id);
+	    $order->update_meta_data('gfp_v_id', $visit_id);
 	}
+	$order->save();
 } , 10, 2);
 
 /**
@@ -203,17 +205,22 @@ function get_goaffpro_config(){
 
 function goaffpro_apply_discount_to_cart() {
 try{
-    if(isset($_COOKIE['discount_code'])){
-       	$coupon_code = sanitize_text_field($_COOKIE['discount_code']);
-     }
-      if(empty($coupon_code)){
-         $coupon_code = WC()->session->get( 'coupon_code');
-      }
-      if ( ! empty( $coupon_code ) && ! WC()->cart->has_discount( $coupon_code ) ){
-          WC()->cart->add_discount( $coupon_code ); // apply the coupon discount
-          WC()->session->__unset( 'coupon_code' ); // remove coupon code from session
-      }
-    }catch(Exception $e){
+    $coupon_code = '';
+    $discount_cookie = isset( $_COOKIE['discount_code'] ) ? $_COOKIE['discount_code']
+                     : ( isset( $_COOKIE['dcode'] ) ? $_COOKIE['dcode'] : null );
+    if ( $discount_cookie !== null && is_scalar( $discount_cookie ) ) {
+        $coupon_code = wc_format_coupon_code( wp_unslash( $discount_cookie ) );
+    }
+    if ( '' === $coupon_code ) {
+        $session_code = WC()->session->get( 'coupon_code' );
+        $coupon_code = ( $session_code && is_scalar( $session_code ) )
+            ? wc_format_coupon_code( $session_code ) : '';
+    }
+    if ( '' !== $coupon_code && ! WC()->cart->has_discount( $coupon_code ) ) {
+        WC()->cart->add_discount( $coupon_code );
+        WC()->session->__unset( 'coupon_code' );
+    }
+    }catch(\Throwable $e){
 
     }
 }
@@ -222,18 +229,17 @@ add_action( 'woocommerce_before_cart_table', 'goaffpro_apply_discount_to_cart');
 function goaffpro_get_custom_coupon_code_to_session() {
 try{
     // retrieve coupon code from URL
-    if( isset( $_GET[ 'coupon_code' ] ) ) {
-        // Ensure that customer session is started
-        if( !WC()->session->has_session() )
-            WC()->session->set_customer_session_cookie(true);
-        // Check and register coupon code in a custom session variable
-        $coupon_code = WC()->session->get( 'coupon_code' );
-        if( empty( $coupon_code ) && isset( $_GET[ 'coupon_code' ] ) ) {
-            $coupon_code = esc_attr( $_GET[ 'coupon_code' ] );
-            WC()->session->set( 'coupon_code', $coupon_code ); // Set the coupon code in session
+    if ( isset( $_GET['coupon_code'] ) && is_scalar( $_GET['coupon_code'] ) ) {
+        $incoming = wc_format_coupon_code( wp_unslash( $_GET['coupon_code'] ) );
+        if ( '' !== $incoming ) {
+            if ( ! WC()->session->has_session() )
+                WC()->session->set_customer_session_cookie( true );
+            if ( '' === (string) WC()->session->get( 'coupon_code' ) ) {
+                WC()->session->set( 'coupon_code', $incoming );
+            }
         }
     }
-    }catch(Exception $e){
+    }catch(\Throwable $e){
 
     }
 }
@@ -258,25 +264,25 @@ function goaffpro_set_checkout_from_url() {
     if(!isset( $_GET['gfp_checkout'] ) ) {
         return;
     }
-	$cart_type = $_GET['gfp_new_cart'];
-	if(isset($cart_type)){
+	if ( ! empty( $_GET['gfp_new_cart'] ) ) {
 		WC()->cart->empty_cart();
 	}
     $products = $_GET['gfp_checkout'];
 	$parts = explode("|",$products);
 	foreach($parts as $product){
        $x = explode(".", trim($product));
-	   $product_id = trim($x[0]);
-	   $quantity = isset($x[1]) ? trim($x[1]) : 1;
-	   $variation_id = isset($x[2]) ? trim($x[2]) : null;
-		$variation_attributes = isset($variation_id) ? goaffpro_get_product_variation_attributes($variation_id) : null;
+	   $product_id = absint($x[0]);
+	   $quantity = isset($x[1]) ? absint($x[1]) : 1;
+	   $variation_id = isset($x[2]) ? absint($x[2]) : null;
+		$variation_attributes = !empty($variation_id) ? goaffpro_get_product_variation_attributes($variation_id) : null;
        if(!empty($product_id)){
           WC()->cart->add_to_cart( $product_id, $quantity, $variation_id, $variation_attributes );
        }
 	}
-	$coupon = $_GET['coupon_code'];
-	if(isset($coupon)){
-		 WC()->cart-> apply_coupon( $coupon );
+	$coupon = isset( $_GET['coupon_code'] ) && is_scalar( $_GET['coupon_code'] )
+		? wc_format_coupon_code( wp_unslash( $_GET['coupon_code'] ) ) : '';
+	if ( '' !== $coupon ) {
+		WC()->cart->apply_coupon( $coupon );
 	}
 }
 
