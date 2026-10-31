@@ -1,7 +1,7 @@
 <?php
 /**
  * @package GoAffPro
- * @version 2.7.12
+ * @version 2.7.13
  * @copyright Goaffpro
  * @licence GPL-2.0
  */
@@ -10,12 +10,12 @@ Plugin Name: Goaffpro Affiliate Marketing
 Plugin URI: https://goaffpro.com/#merchants
 Description: This plugin connects your goaffpro account to your store. Log in to your <a target="_blank" href="https://goaffpro.com">goaffpro account</a> to add this site to your profile
 Author: Goaffpro
-Version: 2.7.12
+Version: 2.7.13
 Author URI: https://goaffpro.com/
 */
 
-$goaffpro_plugin_version = "2.7.11";
-$goaffpro_plugin_version_code = 35;
+$goaffpro_plugin_version = "2.7.13";
+$goaffpro_plugin_version_code = 36;
 
 $goaffpro_token_key = 'goaffpro_public_token';
 if(is_multisite()){
@@ -59,6 +59,16 @@ add_action('wp_footer', 'goaffpro_client_footer');
 function goaffpro_client_footer(){
 	$javascript_url = 'https://api.goaffpro.com/loader.js?shop='.get_goaffpro_public_token();
 	wp_enqueue_script("goaffpro_ref_tracking", $javascript_url);
+	if(is_user_logged_in()){
+		$user = wp_get_current_user();
+		$customer = array(
+			'id'=>$user->ID,
+			'first_name'=>$user->first_name,
+			'last_name'=>$user->last_name,
+			'email'=>$user->user_email,
+		);
+		wp_add_inline_script("goaffpro_ref_tracking", "window.gfp_customer = ".wp_json_encode($customer), 'before');
+	}
 }
 
 /**
