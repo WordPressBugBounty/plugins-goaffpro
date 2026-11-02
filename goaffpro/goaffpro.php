@@ -1,7 +1,7 @@
 <?php
 /**
  * @package GoAffPro
- * @version 2.7.13
+ * @version 2.7.14
  * @copyright Goaffpro
  * @licence GPL-2.0
  */
@@ -10,12 +10,12 @@ Plugin Name: Goaffpro Affiliate Marketing
 Plugin URI: https://goaffpro.com/#merchants
 Description: This plugin connects your goaffpro account to your store. Log in to your <a target="_blank" href="https://goaffpro.com">goaffpro account</a> to add this site to your profile
 Author: Goaffpro
-Version: 2.7.13
+Version: 2.7.14
 Author URI: https://goaffpro.com/
 */
 
-$goaffpro_plugin_version = "2.7.13";
-$goaffpro_plugin_version_code = 36;
+$goaffpro_plugin_version = "2.7.14";
+$goaffpro_plugin_version_code = 37;
 
 $goaffpro_token_key = 'goaffpro_public_token';
 if(is_multisite()){
@@ -154,14 +154,18 @@ function add_goaffpro_api_route(){
 */
 function goaffpro_get_transformed_order($order_id){
     $order = wc_get_order($order_id);
+    if(!$order){
+        return array('id'=>$order_id);
+    }
     $line_items = array();
     foreach ($order->get_items() as $item_id => $item ) {
-        $price = $order->get_item_subtotal($item);
+        // All amounts are exclusive of tax, the tax is reported separately (same as the order level values)
+        $price = (float) $order->get_item_subtotal($item);
         $quantity = $item->get_quantity();
-        $total = $order->get_line_total($item);
-        $tax = $order->get_line_tax($item);
-        $subtotal = $order->get_line_subtotal($item);
-        $discount = $subtotal - $total + $tax;
+        $total = (float) $order->get_line_total($item);
+        $tax = (float) $order->get_line_tax($item);
+        $subtotal = (float) $order->get_line_subtotal($item);
+        $discount = max(0, $subtotal - $total);
         $data = $item->get_data();
        array_push($line_items, array(
         'id'=>$item_id,
@@ -180,11 +184,11 @@ function goaffpro_get_transformed_order($order_id){
               'id'=>$order->get_id(),
               'number'=>$order->get_order_number(),
              // 'data'=>$order->get_data(),
-              'total'=>$order->get_total(),
-              'subtotal'=>$order->get_subtotal(),
-              'discount'=> $order->get_discount_total(),
-              'tax'=>$order->get_total_tax(),
-              'shipping'=> $order->get_shipping_total(),
+              'total'=>(float) $order->get_total(),
+              'subtotal'=>(float) $order->get_subtotal(),
+              'discount'=> (float) $order->get_discount_total(),
+              'tax'=>(float) $order->get_total_tax(),
+              'shipping'=> (float) $order->get_shipping_total(),
               'currency'=> $order->get_currency(),
               'customer'=>$order->get_address(),
               'coupons'=>$order->get_coupon_codes(),

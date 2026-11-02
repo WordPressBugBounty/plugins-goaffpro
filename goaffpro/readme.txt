@@ -3,7 +3,7 @@ Tags: goaffpro, affiliate, affiliate marketing, influencer marketing, multi leve
 Requires at least: 4.6
 Tested up to: 6.9
 License: GPLv2 or later
-Stable tag: 2.7.13
+Stable tag: 2.7.14
 
 The complete affiliate marketing solution for your WordPress and WooCommerce website.
 
