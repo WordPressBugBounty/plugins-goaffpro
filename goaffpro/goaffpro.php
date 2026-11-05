@@ -1,7 +1,7 @@
 <?php
 /**
  * @package GoAffPro
- * @version 2.7.14
+ * @version 2.7.16
  * @copyright Goaffpro
  * @licence GPL-2.0
  */
@@ -10,12 +10,12 @@ Plugin Name: Goaffpro Affiliate Marketing
 Plugin URI: https://goaffpro.com/#merchants
 Description: This plugin connects your goaffpro account to your store. Log in to your <a target="_blank" href="https://goaffpro.com">goaffpro account</a> to add this site to your profile
 Author: Goaffpro
-Version: 2.7.14
+Version: 2.7.16
 Author URI: https://goaffpro.com/
 */
 
-$goaffpro_plugin_version = "2.7.14";
-$goaffpro_plugin_version_code = 37;
+$goaffpro_plugin_version = "2.7.16";
+$goaffpro_plugin_version_code = 39;
 
 $goaffpro_token_key = 'goaffpro_public_token';
 if(is_multisite()){
@@ -89,12 +89,17 @@ function goaffpro_checkout_footer($order_id){
     wp_add_inline_script("goaffpro_ref_tracking", "window.goaffpro_order = ".json_encode($order),'before');
 	$checkout_widget_url = 'https://api.goaffpro.com/checkout_widget.js?shop='.get_goaffpro_public_token().'&woo_order_id='.$order_id;
 	wp_enqueue_script("goaffpro_postcheckout_popup", $checkout_widget_url, array(), false, true);
+    $attr = array(
+        'publicToken' => get_goaffpro_public_token(),
+        'order_id'    => $order_id,
+    );
     try{
-        $attr = array(
-          'publicToken' => get_goaffpro_public_token(),
-          'order_id'=>$order_id
-        );
-        wp_remote_post("https://api.goaffpro.com/woocommerce/internal_hook", array('body' => $attr));
+        // fire and forget: never make the thank you page wait on our API
+        wp_remote_post("https://api.goaffpro.com/woocommerce/internal_hook", array(
+            'body'     => $attr,
+            'blocking' => false,
+            'timeout'  => 1,
+        ));
     }catch(\Throwable $e){
 
     }
@@ -217,28 +222,59 @@ function get_goaffpro_config(){
 
 
 
+/**
+ * Returns the discount code set by the goaffpro loader, read from the `dcode`
+ * cookie (with the legacy `discount_code` cookie as a fallback).
+ */
+function goaffpro_get_discount_code_from_cookie() {
+    $discount_cookie = isset( $_COOKIE['dcode'] ) ? $_COOKIE['dcode']
+                     : ( isset( $_COOKIE['discount_code'] ) ? $_COOKIE['discount_code'] : null );
+    if ( $discount_cookie === null || ! is_scalar( $discount_cookie ) ) {
+        return '';
+    }
+    return wc_format_coupon_code( wp_unslash( $discount_cookie ) );
+}
+
 function goaffpro_apply_discount_to_cart() {
 try{
-    $coupon_code = '';
-    $discount_cookie = isset( $_COOKIE['discount_code'] ) ? $_COOKIE['discount_code']
-                     : ( isset( $_COOKIE['dcode'] ) ? $_COOKIE['dcode'] : null );
-    if ( $discount_cookie !== null && is_scalar( $discount_cookie ) ) {
-        $coupon_code = wc_format_coupon_code( wp_unslash( $discount_cookie ) );
+    if ( ! function_exists( 'WC' ) || ! WC()->cart || ! WC()->session ) {
+        return;
     }
+    $coupon_code = goaffpro_get_discount_code_from_cookie();
     if ( '' === $coupon_code ) {
         $session_code = WC()->session->get( 'coupon_code' );
         $coupon_code = ( $session_code && is_scalar( $session_code ) )
             ? wc_format_coupon_code( $session_code ) : '';
     }
-    if ( '' !== $coupon_code && ! WC()->cart->has_discount( $coupon_code ) ) {
-        WC()->cart->add_discount( $coupon_code );
-        WC()->session->__unset( 'coupon_code' );
+    if ( '' === $coupon_code || WC()->cart->has_discount( $coupon_code ) ) {
+        return;
     }
+    /* skip unknown codes silently, otherwise every page load would show a "coupon does not exist" notice */
+    if ( class_exists( 'WC_Coupon' ) ) {
+        $coupon = new WC_Coupon( $coupon_code );
+        if ( ! $coupon->get_id() ) {
+            return;
+        }
+    }
+    WC()->cart->add_discount( $coupon_code );
+    WC()->session->__unset( 'coupon_code' );
     }catch(\Throwable $e){
 
     }
 }
 add_action( 'woocommerce_before_cart_table', 'goaffpro_apply_discount_to_cart');
+
+/**
+ * Applies the discount code when the cart or checkout page loads, so customers
+ * that skip the cart page (or use the cart/checkout blocks) still get it.
+ */
+function goaffpro_apply_discount_on_cart_and_checkout() {
+    if ( ! function_exists( 'WC' ) || ! ( is_cart() || is_checkout() ) ) {
+        return;
+    }
+    goaffpro_apply_discount_to_cart();
+}
+add_action( 'template_redirect', 'goaffpro_apply_discount_on_cart_and_checkout');
 
 function goaffpro_get_custom_coupon_code_to_session() {
 try{
